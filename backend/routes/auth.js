@@ -2,9 +2,14 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import { body, validationResult } from "express-validator";
 import { db } from "../db.js";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const router = express.Router();
 
+// Registrarse
 router.post(
   "/register",
   [
@@ -33,6 +38,44 @@ router.post(
       ]);
 
       res.json({ mensaje: "Usuario registrado correctamente" });
+    } catch (err) {
+      res.status(500).json({ mensaje: "Error interno del servidor" });
+    }
+  }
+);
+
+// Logearse
+router.post(
+  "/login",
+  [
+    body("email").isEmail().withMessage("Email invalido"),
+    body("password").notEmpty().withMessage("Contraseña requerida"),
+  ],
+  async (req, res) => {
+    const errores = validationResult(req);
+    if (!errores.isEmpty())
+      return res.status(400).json({ errores: errores.array() });
+
+    const { email, password } = req.body;
+    try {
+      const [rows] = await db.query("SELECT * FROM usuario WHERE email = ?", [
+        email,
+      ]);
+      if (rows.length === 0)
+        return res.status(401).json({ mensaje: "Credenciales invalidas" });
+
+      const usuario = rows[0];
+      const match = await bcrypt.compare(password, usuario.password);
+      if (!match)
+        return res.status(401).json({ mensaje: "Credenciales invalidas" });
+
+      const token = jwt.sign(
+        { id: usuario.id, email: usuario.email },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN }
+      );
+
+      res.json({ token, usuario: { id: usuario.id, nombre: usuario.nombre } });
     } catch (err) {
       res.status(500).json({ mensaje: "Error interno del servidor" });
     }
