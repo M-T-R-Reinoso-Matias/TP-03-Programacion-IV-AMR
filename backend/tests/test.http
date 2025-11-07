@@ -1,0 +1,65 @@
+@token = pon_el_token_aqui
+
+### Registrar usuario
+POST http://localhost:8000/api/auth/register
+Content-Type: application/json
+
+{
+  "nombre": "Profesor",
+  "email": "profesor@ejemplo.com",
+  "password": "secret123"
+}
+
+### Login
+POST http://localhost:8000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "profesor@ejemplo.com",
+  "password": "secret123"
+}
+
+# Copiar el token de la respuesta y para probar si funciona ponerlo en @token= 
+
+### Crear alumno
+POST http://localhost:8000/api/alumnos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Juan",
+  "apellido": "Perez",
+  "dni": "12345678"
+}
+
+### Crear materia
+POST http://localhost:8000/api/materias
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Matematicas",
+  "codigo": "MAT101",
+  "anio": 2025
+}
+
+### Asignar notas
+POST http://localhost:8000/api/notas
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "alumno_id": 1,
+  "materia_id": 1,
+  "nota1": 7.5,
+  "nota2": 8,
+  "nota3": 9.25
+}
+
+### Obtener notas de alumno
+GET http://localhost:8000/api/notas/alumno/1
+Authorization: Bearer {{token}}
+
+### Obtener promedio por materia
+GET http://localhost:8000/api/notas/materia/1
+Authorization: Bearer {{token}}
