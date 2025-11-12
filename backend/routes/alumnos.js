@@ -81,11 +81,14 @@ router.put(
 // Eliminar
 router.delete("/:id", [param("id").isInt().withMessage("id invalido")], validarCampos, async (req, res) => {
   try {
-    await db.query("DELETE FROM alumno WHERE id = ?", [req.params.id]);
+    const [result] = await db.query("DELETE FROM alumno WHERE id = ?", [req.params.id]);
+    if (result.affectedRows === 0) return res.status(404).json({ mensaje: "Alumno no encontrado" });
     res.json({ mensaje: "Alumno eliminado" });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ mensaje: "Error interno del servidor" });
   }
 });
+
 
 export default router;

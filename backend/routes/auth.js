@@ -37,7 +37,7 @@ router.post(
         hashed,
       ]);
 
-      res.json({ mensaje: "Usuario registrado correctamente" });
+      res.status(201).json({ mensaje: "Usuario registrado correctamente" });
     } catch (err) {
       res.status(500).json({ mensaje: "Error interno del servidor" });
     }

@@ -77,14 +77,24 @@ router.put("/:id",
   }
 );
 
-// Eliminar
-router.delete("/:id", [param("id").isInt()], validarCampos, async (req, res) => {
-  try {
-    await db.query("DELETE FROM materia WHERE id = ?", [req.params.id]);
-    res.json({ mensaje: "Materia eliminada" });
-  } catch (err) {
-    res.status(500).json({ mensaje: "Error interno del servidor" });
+// Eliminar materia (por id)
+router.delete("/:id", [param("id").isInt().withMessage("id inválido"), validarCampos],
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const [materia] = await db.query("SELECT * FROM materia WHERE id = ?", [id]);
+      if (materia.length === 0) {
+        return res.status(404).json({ message: "Materia no encontrada" });
+      }
+
+      await db.query("DELETE FROM materia WHERE id = ?", [id]);
+      res.json({ message: "Materia eliminada correctamente" });
+    } catch (error) {
+      console.error("Error al eliminar materia:", error);
+      res.status(500).json({ message: "Error interno del servidor" });
+    }
   }
-});
+);
 
 export default router;
