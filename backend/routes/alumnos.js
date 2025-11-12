@@ -9,24 +9,26 @@ const router = express.Router();
 router.get("/", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT id, nombre, apellido, dni FROM alumno");
-    res.json(rows);
+    return res.json({ ok: true, data: rows });
   } catch (err) {
-    res.status(500).json({ mensaje: "Error interno" });
+    console.error("GET /alumnos:", err);
+    return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
   }
 });
 
 // Obtener por id
-router.get("/:id", [param("id").isInt().withMessage("id invalido")], validarCampos, async (req, res) => {
+router.get("/:id", [param("id").isInt().withMessage("id inválido")], validarCampos, async (req, res) => {
   try {
     const [rows] = await db.query("SELECT id, nombre, apellido, dni FROM alumno WHERE id = ?", [req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ mensaje: "Alumno no encontrado" });
-    res.json(rows[0]);
+    if (rows.length === 0) return res.status(404).json({ ok: false, mensaje: "Alumno no encontrado" });
+    return res.json({ ok: true, data: rows[0] });
   } catch (err) {
-    res.status(500).json({ mensaje: "Error interno" });
+    console.error("GET /alumnos/:id:", err);
+    return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
   }
 });
 
-// Crear
+// Crear alumno
 router.post(
   "/",
   [
@@ -39,21 +41,22 @@ router.post(
     const { nombre, apellido, dni } = req.body;
     try {
       const [existe] = await db.query("SELECT id FROM alumno WHERE dni = ?", [dni]);
-      if (existe.length) return res.status(400).json({ mensaje: "DNI ya registrado" });
+      if (existe.length) return res.status(400).json({ ok: false, mensaje: "DNI ya registrado" });
 
       const [result] = await db.query("INSERT INTO alumno (nombre, apellido, dni) VALUES (?,?,?)", [nombre, apellido, dni]);
-      res.status(201).json({ id: result.insertId, nombre, apellido, dni });
+      return res.status(201).json({ ok: true, mensaje: "Alumno creado", data: { id: result.insertId, nombre, apellido, dni } });
     } catch (err) {
-      res.status(500).json({ mensaje: "Error interno" });
+      console.error("POST /alumnos:", err);
+      return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
     }
   }
 );
 
-// Actualizar
+// Actualizar alumno
 router.put(
   "/:id",
   [
-    param("id").isInt().withMessage("id invalido"),
+    param("id").isInt().withMessage("id inválido"),
     body("nombre").optional().notEmpty(),
     body("apellido").optional().notEmpty(),
     body("dni").optional().isNumeric().withMessage("DNI numérico"),
@@ -65,30 +68,30 @@ router.put(
     try {
       if (dni) {
         const [dup] = await db.query("SELECT id FROM alumno WHERE dni = ? AND id <> ?", [dni, id]);
-        if (dup.length) return res.status(400).json({ mensaje: "DNI ya en uso por otro alumno" });
+        if (dup.length) return res.status(400).json({ ok: false, mensaje: "DNI ya en uso por otro alumno" });
       }
       await db.query(
         "UPDATE alumno SET nombre = COALESCE(?, nombre), apellido = COALESCE(?, apellido), dni = COALESCE(?, dni) WHERE id = ?",
         [nombre, apellido, dni, id]
       );
-      res.json({ mensaje: "Alumno actualizado" });
+      return res.json({ ok: true, mensaje: "Alumno actualizado" });
     } catch (err) {
-      res.status(500).json({ mensaje: "Error interno del servidor" });
+      console.error("PUT /alumnos/:id:", err);
+      return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
     }
   }
 );
 
-// Eliminar
-router.delete("/:id", [param("id").isInt().withMessage("id invalido")], validarCampos, async (req, res) => {
+// Eliminar alumno
+router.delete("/:id", [param("id").isInt().withMessage("id inválido")], validarCampos, async (req, res) => {
   try {
     const [result] = await db.query("DELETE FROM alumno WHERE id = ?", [req.params.id]);
-    if (result.affectedRows === 0) return res.status(404).json({ mensaje: "Alumno no encontrado" });
-    res.json({ mensaje: "Alumno eliminado" });
+    if (result.affectedRows === 0) return res.status(404).json({ ok: false, mensaje: "Alumno no encontrado" });
+    return res.json({ ok: true, mensaje: "Alumno eliminado" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ mensaje: "Error interno del servidor" });
+    console.error("DELETE /alumnos/:id:", err);
+    return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
   }
 });
-
 
 export default router;

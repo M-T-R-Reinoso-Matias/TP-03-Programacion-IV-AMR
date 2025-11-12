@@ -5,57 +5,60 @@ import { db } from "../db.js";
 
 const router = express.Router();
 
-// Listar
+// Listar todas las materias
 router.get("/", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT id, nombre, codigo, anio FROM materia");
-    res.json(rows);
+    return res.json({ ok: true, data: rows });
   } catch (err) {
-    res.status(500).json({ mensaje: "Error interno del servidor" });
+    console.error("GET /materias:", err);
+    return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
   }
 });
 
-// Obtener por id
-router.get("/:id", [param("id").isInt()], validarCampos, async (req, res) => {
+// Obtener materia por id
+router.get("/:id", [param("id").isInt().withMessage("id inválido")], validarCampos, async (req, res) => {
   try {
     const [rows] = await db.query("SELECT id, nombre, codigo, anio FROM materia WHERE id = ?", [req.params.id]);
-    if (!rows.length) return res.status(404).json({ mensaje: "Materia no encontrada" });
-    res.json(rows[0]);
+    if (!rows.length) return res.status(404).json({ ok: false, mensaje: "Materia no encontrada" });
+    return res.json({ ok: true, data: rows[0] });
   } catch (err) {
-    res.status(500).json({ mensaje: "Error interno del servidor" });
+    console.error("GET /materias/:id:", err);
+    return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
   }
 });
 
-// Crear
+// Crear materia
 router.post(
   "/",
   [
-    body("nombre").notEmpty(),
-    body("codigo").notEmpty(),
-    body("anio").isInt({ min: 1900 }).withMessage("Año invalido"),
+    body("nombre").notEmpty().withMessage("Nombre requerido"),
+    body("codigo").notEmpty().withMessage("Código requerido"),
+    body("anio").isInt({ min: 1900 }).withMessage("Año inválido"),
   ],
   validarCampos,
   async (req, res) => {
     const { nombre, codigo, anio } = req.body;
     try {
       const [exists] = await db.query("SELECT id FROM materia WHERE codigo = ?", [codigo]);
-      if (exists.length) return res.status(400).json({ mensaje: "Codigo ya registrado" });
+      if (exists.length) return res.status(400).json({ ok: false, mensaje: "Código ya registrado" });
 
       const [result] = await db.query("INSERT INTO materia (nombre, codigo, anio) VALUES (?,?,?)", [nombre, codigo, anio]);
-      res.status(201).json({ id: result.insertId, nombre, codigo, anio });
+      return res.status(201).json({ ok: true, mensaje: "Materia creada", data: { id: result.insertId, nombre, codigo, anio } });
     } catch (err) {
-      res.status(500).json({ mensaje: "Error interno del servidor" });
+      console.error("POST /materias:", err);
+      return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
     }
   }
 );
 
-// Actualizar
+// Actualizar materia
 router.put("/:id",
   [
-    param("id").isInt(),
+    param("id").isInt().withMessage("id inválido"),
     body("nombre").optional().notEmpty(),
     body("codigo").optional().notEmpty(),
-    body("anio").optional().isInt({ min: 1900 })
+    body("anio").optional().isInt({ min: 1900 }).withMessage("Año inválido"),
   ],
   validarCampos,
   async (req, res) => {
@@ -64,37 +67,30 @@ router.put("/:id",
     try {
       if (codigo) {
         const [dup] = await db.query("SELECT id FROM materia WHERE codigo = ? AND id <> ?", [codigo, id]);
-        if (dup.length) return res.status(400).json({ mensaje: "Codigo ya en uso" });
+        if (dup.length) return res.status(400).json({ ok: false, mensaje: "Código ya en uso" });
       }
       await db.query(
         "UPDATE materia SET nombre = COALESCE(?, nombre), codigo = COALESCE(?, codigo), anio = COALESCE(?, anio) WHERE id = ?",
         [nombre, codigo, anio, id]
       );
-      res.json({ mensaje: "Materia actualizada" });
+      return res.json({ ok: true, mensaje: "Materia actualizada" });
     } catch (err) {
-      res.status(500).json({ mensaje: "Error interno del servidor" });
+      console.error("PUT /materias/:id:", err);
+      return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
     }
   }
 );
 
-// Eliminar materia (por id)
-router.delete("/:id", [param("id").isInt().withMessage("id inválido"), validarCampos],
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-
-      const [materia] = await db.query("SELECT * FROM materia WHERE id = ?", [id]);
-      if (materia.length === 0) {
-        return res.status(404).json({ message: "Materia no encontrada" });
-      }
-
-      await db.query("DELETE FROM materia WHERE id = ?", [id]);
-      res.json({ message: "Materia eliminada correctamente" });
-    } catch (error) {
-      console.error("Error al eliminar materia:", error);
-      res.status(500).json({ message: "Error interno del servidor" });
-    }
+// Eliminar materia
+router.delete("/:id", [param("id").isInt().withMessage("id inválido")], validarCampos, async (req, res) => {
+  try {
+    const [result] = await db.query("DELETE FROM materia WHERE id = ?", [req.params.id]);
+    if (result.affectedRows === 0) return res.status(404).json({ ok: false, mensaje: "Materia no encontrada" });
+    return res.json({ ok: true, mensaje: "Materia eliminada" });
+  } catch (err) {
+    console.error("DELETE /materias/:id:", err);
+    return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
   }
-);
+});
 
 export default router;
