@@ -1,4 +1,3 @@
-// routes/notas.js
 import express from "express";
 import { body, param } from "express-validator";
 import { validarCampos } from "../middlewares/validar.js";
@@ -6,12 +5,34 @@ import { db } from "../db.js";
 
 const router = express.Router();
 
-// Crear o actualizar notas
+// Funciones auxiliares
+function parseNotasRow(row) {
+  const n1 = row.nota1 !== null ? Number(row.nota1) : null;
+  const n2 = row.nota2 !== null ? Number(row.nota2) : null;
+  const n3 = row.nota3 !== null ? Number(row.nota3) : null;
+  return { n1, n2, n3 };
+}
+
+function calcPromedio(...vals) {
+  const arr = vals.filter((v) => v !== null && !Number.isNaN(v));
+  if (!arr.length) return null;
+  return Number((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2));
+}
+
+// permitir tablas controladas para evitar inyección de nombres de tabla
+const ALLOWED_TABLES = new Set(["alumno", "materia"]);
+async function existsTableId(table, id) {
+  if (!ALLOWED_TABLES.has(table)) throw new Error("Tabla no permitida");
+  const [rows] = await db.query(`SELECT id FROM ${table} WHERE id = ?`, [id]);
+  return rows.length > 0;
+}
+
+// Crear o actualizar nota
 router.post(
   "/",
   [
-    body("alumno_id").isInt().withMessage("alumno_id invalido"),
-    body("materia_id").isInt().withMessage("materia_id invalido"),
+    body("alumno_id").isInt().withMessage("alumno_id inválido"),
+    body("materia_id").isInt().withMessage("materia_id inválido"),
     body("nota1").optional().isFloat({ min: 0, max: 10 }).withMessage("nota1 fuera de rango"),
     body("nota2").optional().isFloat({ min: 0, max: 10 }).withMessage("nota2 fuera de rango"),
     body("nota3").optional().isFloat({ min: 0, max: 10 }).withMessage("nota3 fuera de rango"),
@@ -21,16 +42,14 @@ router.post(
     const { alumno_id, materia_id, nota1 = null, nota2 = null, nota3 = null } = req.body;
 
     try {
-      // Validar existencia de alumno y materia
-      const [alumnoRows] = await db.query("SELECT id FROM alumno WHERE id = ?", [alumno_id]);
-      if (alumnoRows.length === 0)
-        return res.status(404).json({ ok: false, error: "Alumno no encontrado" });
+      // validar existencia alumno/materia
+      const alumnoExists = await existsTableId("alumno", alumno_id);
+      if (!alumnoExists) return res.status(404).json({ ok: false, mensaje: "Alumno no encontrado" });
 
-      const [materiaRows] = await db.query("SELECT id FROM materia WHERE id = ?", [materia_id]);
-      if (materiaRows.length === 0)
-        return res.status(404).json({ ok: false, error: "Materia no encontrada" });
+      const materiaExists = await existsTableId("materia", materia_id);
+      if (!materiaExists) return res.status(404).json({ ok: false, mensaje: "Materia no encontrada" });
 
-      // Verificar si ya existen notas para este alumno y materia
+      // verificar si ya existe la nota
       const [exists] = await db.query(
         "SELECT id FROM nota WHERE alumno_id = ? AND materia_id = ?",
         [alumno_id, materia_id]
@@ -49,23 +68,37 @@ router.post(
         );
       }
 
-      // Obtener la fila actualizada/creada
+      // devolver la nota actualizada/creada
       const [notaRows] = await db.query(
         "SELECT id, alumno_id, materia_id, nota1, nota2, nota3 FROM nota WHERE alumno_id = ? AND materia_id = ?",
         [alumno_id, materia_id]
       );
 
-      return res
-        .status(exists.length ? 200 : 201)
-        .json({
-          ok: true,
-          nota: notaRows[0],
-          message: exists.length ? "Notas actualizadas" : "Notas creadas",
-        });
+      if (!notaRows.length) {
+        return res.status(500).json({ ok: false, mensaje: "No se pudo obtener la nota creada/actualizada" });
+      }
 
+      const row = notaRows[0];
+      const { n1, n2, n3 } = parseNotasRow(row);
+      const promedio = calcPromedio(n1, n2, n3);
+
+      return res.status(exists.length ? 200 : 201).json({
+        ok: true,
+        data: {
+          nota: {
+            id: row.id,
+            alumno_id: row.alumno_id,
+            materia_id: row.materia_id,
+            nota1: n1,
+            nota2: n2,
+            nota3: n3,
+            promedio,
+          }
+        },
+      });
     } catch (err) {
-      console.error("Error en POST /notas:", err);
-      return res.status(500).json({ ok: false, error: "Error interno del servidor" });
+      console.error("POST /notas:", err);
+      return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
     }
   }
 );
@@ -73,14 +106,13 @@ router.post(
 // Obtener todas las notas de un alumno con promedio por materia
 router.get(
   "/alumno/:id",
-  [param("id").isInt().withMessage("id invalido"), validarCampos],
+  [param("id").isInt().withMessage("id inválido"), validarCampos],
   async (req, res) => {
     const alumnoId = req.params.id;
     try {
-      // Verificar que el alumno exista
-      const [alumnoRows] = await db.query("SELECT id FROM alumno WHERE id = ?", [alumnoId]);
-      if (alumnoRows.length === 0)
-        return res.status(404).json({ ok: false, error: "Alumno no encontrado" });
+      // verificar existencia del alumno
+      const alumnoExists = await existsTableId("alumno", alumnoId);
+      if (!alumnoExists) return res.status(404).json({ ok: false, mensaje: "Alumno no encontrado" });
 
       // Obtener sus notas
       const [rows] = await db.query(
@@ -93,15 +125,8 @@ router.get(
       );
 
       const result = rows.map((r) => {
-        const n1 = r.nota1 !== null ? Number(r.nota1) : null;
-        const n2 = r.nota2 !== null ? Number(r.nota2) : null;
-        const n3 = r.nota3 !== null ? Number(r.nota3) : null;
-
-        const arr = [n1, n2, n3].filter((v) => v !== null && !Number.isNaN(v));
-        const promedio = arr.length
-          ? Number((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2))
-          : null;
-
+        const { n1, n2, n3 } = parseNotasRow(r);
+        const promedio = calcPromedio(n1, n2, n3);
         return {
           materia_id: r.materia_id,
           materia: r.materia,
@@ -112,25 +137,31 @@ router.get(
         };
       });
 
-      return res.json({ ok: true, notas: result });
+      // Calcular promedio general del alumno
+      const proms = result.filter((r) => r.promedio !== null).map((r) => r.promedio);
+      const promedio_general = proms.length
+        ? Number((proms.reduce((a, b) => a + b, 0) / proms.length).toFixed(2))
+        : null;
+
+      // Devolver notas y promedio general en formato consistente
+      return res.json({ ok: true, data: { notas: result, promedio_general } });
     } catch (err) {
-      console.error("Error GET /notas/alumno/:id", err);
-      return res.status(500).json({ ok: false, error: "Error interno del servidor" });
+      console.error("GET /notas/alumno/:id", err);
+      return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
     }
   }
 );
 
-// Obtener promedio por materia (todos los alumnos)
+// Obtener promedio por materia y listado de alumnos con sus notas
 router.get(
   "/materia/:id",
-  [param("id").isInt().withMessage("id invalido"), validarCampos],
+  [param("id").isInt().withMessage("id inválido"), validarCampos],
   async (req, res) => {
     const materiaId = req.params.id;
     try {
-      // Verificar que la materia exista
-      const [materiaRows] = await db.query("SELECT id FROM materia WHERE id = ?", [materiaId]);
-      if (materiaRows.length === 0)
-        return res.status(404).json({ ok: false, error: "Materia no encontrada" });
+      // verificar existencia materia
+      const materiaExists = await existsTableId("materia", materiaId);
+      if (!materiaExists) return res.status(404).json({ ok: false, mensaje: "Materia no encontrada" });
 
       // Obtener las notas
       const [rows] = await db.query(
@@ -142,15 +173,8 @@ router.get(
       );
 
       const result = rows.map((r) => {
-        const n1 = r.nota1 !== null ? Number(r.nota1) : null;
-        const n2 = r.nota2 !== null ? Number(r.nota2) : null;
-        const n3 = r.nota3 !== null ? Number(r.nota3) : null;
-
-        const arr = [n1, n2, n3].filter((v) => v !== null && !Number.isNaN(v));
-        const promedio = arr.length
-          ? Number((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2))
-          : null;
-
+        const { n1, n2, n3 } = parseNotasRow(r);
+        const promedio = calcPromedio(n1, n2, n3);
         return {
           alumno_id: r.alumno_id,
           nombre: r.nombre,
@@ -162,15 +186,15 @@ router.get(
         };
       });
 
+      // Calcular promedio de la materia
       const proms = result.filter((r) => r.promedio !== null).map((r) => r.promedio);
-      const promedio_materia = proms.length
-        ? Number((proms.reduce((a, b) => a + b, 0) / proms.length).toFixed(2))
-        : null;
+      const promedio_materia = proms.length ? Number((proms.reduce((a, b) => a + b, 0) / proms.length).toFixed(2)) : null;
 
-      return res.json({ ok: true, promedio_materia, alumnos: result });
+      // Respuesta consistente
+      return res.json({ ok: true, data: { promedio_materia, alumnos: result } });
     } catch (err) {
-      console.error("Error GET /notas/materia/:id", err);
-      return res.status(500).json({ ok: false, error: "Error interno del servidor" });
+      console.error("GET /notas/materia/:id", err);
+      return res.status(500).json({ ok: false, mensaje: "Error interno del servidor" });
     }
   }
 );
