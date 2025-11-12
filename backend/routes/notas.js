@@ -5,7 +5,7 @@ import { db } from "../db.js";
 
 const router = express.Router();
 
- // Crear y actualizar notas 
+// Crear y actualizar notas
 router.post(
   "/",
   [
@@ -19,7 +19,10 @@ router.post(
   async (req, res) => {
     const { alumno_id, materia_id, nota1 = null, nota2 = null, nota3 = null } = req.body;
     try {
-      const [exists] = await db.query("SELECT id FROM nota WHERE alumno_id = ? AND materia_id = ?", [alumno_id, materia_id]);
+      const [exists] = await db.query(
+        "SELECT id FROM nota WHERE alumno_id = ? AND materia_id = ?",
+        [alumno_id, materia_id]
+      );
       if (exists.length) {
         await db.query(
           "UPDATE nota SET nota1 = ?, nota2 = ?, nota3 = ? WHERE alumno_id = ? AND materia_id = ?",
@@ -46,8 +49,10 @@ router.get("/alumno/:id", [param("id").isInt()], validarCampos, async (req, res)
     const [rows] = await db.query(
       `SELECT m.id AS materia_id, m.nombre AS materia,
         n.nota1, n.nota2, n.nota3,
-        ( (COALESCE(n.nota1,0) + COALESCE(n.nota2,0) + COALESCE(n.nota3,0)) /
-          NULLIF( ( (n.nota1 IS NOT NULL)::int + (n.nota2 IS NOT NULL)::int + (n.nota3 IS NOT NULL)::int ), 0)
+        (
+          (COALESCE(n.nota1,0) + COALESCE(n.nota2,0) + COALESCE(n.nota3,0))
+          /
+          NULLIF( ( (n.nota1 IS NOT NULL) + (n.nota2 IS NOT NULL) + (n.nota3 IS NOT NULL) ), 0)
         ) AS promedio
        FROM materia m
        LEFT JOIN nota n ON n.materia_id = m.id AND n.alumno_id = ?
@@ -55,7 +60,7 @@ router.get("/alumno/:id", [param("id").isInt()], validarCampos, async (req, res)
       [alumnoId]
     );
     // Si la consulta falla por el casting, haremos la calculadora en JS abajo.
-    res.json(rows);
+    return res.json(rows);
   } catch (err) {
     // calcular en JS
     try {
@@ -71,9 +76,9 @@ router.get("/alumno/:id", [param("id").isInt()], validarCampos, async (req, res)
         const promedio = arr.length ? arr.reduce((a, b) => a + parseFloat(b), 0) / arr.length : null;
         return { materia_id: m.id, materia: m.nombre, nota1: n.nota1, nota2: n.nota2, nota3: n.nota3, promedio };
       });
-      res.json(result);
+      return res.json(result);
     } catch (err2) {
-      res.status(500).json({ mensaje: "Error interno del servidor" });
+      return res.status(500).json({ mensaje: "Error interno del servidor" });
     }
   }
 });
@@ -100,9 +105,9 @@ router.get("/materia/:id", [param("id").isInt()], validarCampos, async (req, res
     const proms = result.filter(r => r.promedio !== null).map(r => r.promedio);
     const promedio_materia = proms.length ? proms.reduce((a, b) => a + b, 0) / proms.length : null;
 
-    res.json({ promedio_materia, alumnos: result });
+    return res.json({ promedio_materia, alumnos: result });
   } catch (err) {
-    res.status(500).json({ mensaje: "Error interno del servidor" });
+    return res.status(500).json({ mensaje: "Error interno del servidor" });
   }
 });
 
